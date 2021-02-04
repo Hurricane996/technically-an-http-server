@@ -6,4 +6,4 @@ It was a learning experience. It answers the question "can I write an HTTP serve
 
 This is technically an http server. It doesn't support anything you would expect an http server to support, not even a proper 404 page.  But it serves files over http, so I consider the challenge complete.
 
-But, if for some godforsaken reason, you want to do something with this code, it is gpl v 3
+But, if for some godforsaken reason, you want to do something with this code, it is GPLv3
