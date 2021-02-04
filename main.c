@@ -8,14 +8,15 @@
 #include <sys/stat.h>
 #include <pthread.h>
 
-char* PATH_PREFIX = ".";
+const char* PATH_PREFIX = ".";
+const char* PATH_404 =  "./404.html";
 
 struct HTTP_Header {
 	char* name;
 	char* value;
 };
 
-int isDirectory(const char *path) {
+int is_directory(const char *path) {
    struct stat statbuf;
    if (stat(path, &statbuf) != 0)
        return 0;
@@ -75,18 +76,76 @@ void build_response(char* buf, int code, struct HTTP_Header* headers, int num_he
 	buf[buf_pos] = 0;
 }
 
+void serve(const char* path, int client_sock) {
+	char realpath_result[4096] ;
+	char buffer_out[2048];
+
+	if(realpath(path, realpath_result) == NULL){
+		perror("realpath");
+		if(strcmp(path, PATH_404) == 0 ){
+			build_response(buffer_out, 404, NULL,0,"Double 404");
+			write(client_sock, buffer_out, strlen(buffer_out));
+			close(client_sock);
+			return;
+		}
+
+		serve(PATH_404, client_sock);
+		return;
+	}
+
+	if(is_directory(realpath_result)) {
+		strcpy(realpath_result + strlen(realpath_result), "/index.html");
+	}
+
+	printf("Loading file %s\n", realpath_result);
+
+	if(access(realpath_result, R_OK) == 0) {
+
+
+
+		FILE* fp = fopen(realpath_result, "r");
+
+		//file size
+		fseek(fp, 0L, SEEK_END);
+		int size = ftell(fp);
+
+		char buffer_out_bigger[size + 2048];
+		char buffer_file_in[size + 1];
+
+
+		rewind(fp);
+
+		fread(buffer_file_in, 1, size, fp);
+
+		buffer_file_in[size] = 0;
+
+		build_response(buffer_out_bigger,200,NULL,0,buffer_file_in);
+		write(client_sock, buffer_out_bigger, strlen(buffer_out_bigger));
+		close(client_sock);
+	} else {
+		perror("access");
+
+		if(strcmp(path,PATH_404) == 0 ){
+			build_response(buffer_out, 404, NULL,0,"Double 404");
+			write(client_sock, buffer_out, strlen(buffer_out));
+			close(client_sock);
+			return;
+		}
+
+		serve(PATH_404, client_sock);
+	}
+}
+
 void* func(void* thread_args) {
 	int client_sock = *(int*)thread_args;
 	free(thread_args);
 
 
 	char buffer_in[8192] = {0};
-	char buffer_out[8192] = {0};
+	char buffer_out[2048] = {0};
 
 
 	read(client_sock, buffer_in, sizeof(buffer_in)); 
-
-
 
 	// parse the http
 
@@ -168,60 +227,8 @@ void* func(void* thread_args) {
 	memcpy(path, PATH_PREFIX, strlen(PATH_PREFIX));
 
 
-	char realpath_result[4096];
-
-	if(realpath(path, realpath_result) == NULL){
-
-		perror("realpath");
-		build_response(buffer_out, 404, NULL,0,"404");
-		write(client_sock, buffer_out, strlen(buffer_out));
-		close(client_sock);
-		return NULL;
-	}
-
-	if(isDirectory(realpath_result)) {
-		strcpy(realpath_result + strlen(realpath_result), "/index.html");
-	}
-
-	printf("Loading file %s\n", realpath_result);
-
-	if(access(realpath_result, R_OK) == 0) {
-
-
-
-		FILE* fp = fopen(realpath_result, "r");
-
-		//file size
-		fseek(fp, 0L, SEEK_END);
-		int size = ftell(fp);
-
-		char buffer_out_bigger[size + 2048];
-		char buffer_file_in[size + 1];
-
-
-		rewind(fp);
-
-		fread(buffer_file_in, 1, size, fp);
-
-		buffer_file_in[size] = 0;
-
-		build_response(buffer_out_bigger,200,NULL,0,buffer_file_in);
-		write(client_sock, buffer_out_bigger, strlen(buffer_out_bigger));
-		close(client_sock);
-		return NULL;
-	} else {
-		perror("access");
-
-
-		build_response(buffer_out, 404, NULL,0,"");
-		write(client_sock, buffer_out, strlen(buffer_out));
-		close(client_sock);
-		return NULL;
-	};
-
-	build_response(buffer_out,500,NULL,0,"");
-	write(client_sock, buffer_out, strlen(buffer_out));
-	close(client_sock);
+	
+	serve(path, client_sock);
 	return NULL;
 }
 
