@@ -6,11 +6,9 @@
 #include <unistd.h>
 #include <netinet/in.h> 
 #include <sys/stat.h>
-
+#include <pthread.h>
 
 char* PATH_PREFIX = ".";
-
-char* 404_PAGE = "./404.html"
 
 struct HTTP_Header {
 	char* name;
@@ -77,7 +75,11 @@ void build_response(char* buf, int code, struct HTTP_Header* headers, int num_he
 	buf[buf_pos] = 0;
 }
 
-void func(int client_sock) {
+void* func(void* thread_args) {
+	int client_sock = *(int*)thread_args;
+	free(thread_args);
+
+
 	char buffer_in[8192] = {0};
 	char buffer_out[8192] = {0};
 
@@ -106,7 +108,7 @@ void func(int client_sock) {
 				build_response(buffer_out, 400, NULL, 0 , "");
 				write(client_sock, buffer_out, strlen(buffer_out));
 				close(client_sock);
-				return;
+				return NULL;
 			}
 			else strncpy(method, buffer_in + method_start, method_size);
 
@@ -125,7 +127,7 @@ void func(int client_sock) {
 				build_response(buffer_out, 414, NULL, 0 , "");
 				write(client_sock, buffer_out, strlen(buffer_out));
 				close(client_sock);
-				return;
+				return NULL;
 			}
 
 			else strncpy(path, buffer_in + path_start, path_size);
@@ -147,7 +149,7 @@ void func(int client_sock) {
 		build_response(buffer_out, 405, NULL, 0, "");
 		write(client_sock, buffer_out,strlen(buffer_out));
 		close(client_sock);
-		return;
+		return NULL;
 	}
 
 	// next add path_prefix to front of path
@@ -156,7 +158,7 @@ void func(int client_sock) {
 		build_response(buffer_out, 414, NULL, 0 , "");
 		write(client_sock, buffer_out, strlen(buffer_out));
 		close(client_sock);
-		return;
+		return NULL;
 	}
 
 	for(int i=strlen(path) - 1; i >= 0; i--){
@@ -174,7 +176,7 @@ void func(int client_sock) {
 		build_response(buffer_out, 404, NULL,0,"404");
 		write(client_sock, buffer_out, strlen(buffer_out));
 		close(client_sock);
-		return;
+		return NULL;
 	}
 
 	if(isDirectory(realpath_result)) {
@@ -206,7 +208,7 @@ void func(int client_sock) {
 		build_response(buffer_out_bigger,200,NULL,0,buffer_file_in);
 		write(client_sock, buffer_out_bigger, strlen(buffer_out_bigger));
 		close(client_sock);
-		return;
+		return NULL;
 	} else {
 		perror("access");
 
@@ -214,13 +216,13 @@ void func(int client_sock) {
 		build_response(buffer_out, 404, NULL,0,"");
 		write(client_sock, buffer_out, strlen(buffer_out));
 		close(client_sock);
-		return;
+		return NULL;
 	};
 
 	build_response(buffer_out,500,NULL,0,"");
 	write(client_sock, buffer_out, strlen(buffer_out));
 	close(client_sock);
-	return;
+	return NULL;
 }
 
 int main(void)
@@ -268,7 +270,11 @@ int main(void)
 		if(client_sock < 0) {
 			fprintf(stderr, "server accept failed\n");
 		} else {
-			func(client_sock);
+			
+			int * thread_args = (int*)malloc(sizeof(int));
+			*thread_args = client_sock;
+			pthread_t thread;
+			pthread_create(&thread, NULL, func, (void*) thread_args);
 		}
 		sleep(1);
 	}
